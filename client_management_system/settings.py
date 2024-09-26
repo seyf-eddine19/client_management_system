@@ -52,7 +52,7 @@ JAZZMIN_SETTINGS = {
     "search_model": "crm.Customer",
     "user_avatar": None,
     "related_modal_active": True,
-    "show_ui_builder": True,
+    "show_ui_builder": False,
 
     # Top Menu Links
     "topmenu_links": [
