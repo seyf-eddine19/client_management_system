@@ -52,7 +52,7 @@ JAZZMIN_SETTINGS = {
     "search_model": "crm.Customer",
     "user_avatar": None,
     "related_modal_active": True,
-    "show_ui_builder": True,
+    "show_ui_builder": False,
 
     # Top Menu Links
     "topmenu_links": [
@@ -77,15 +77,15 @@ JAZZMIN_UI_TWEAKS = {
     "footer_small_text": False,
     "body_small_text": False,
     "brand_small_text": False,
-    "brand_colour": False,
-    "accent": "accent-olive",
+    "brand_colour": "navbar-gray",
+    "accent": "accent-lightblue",
     "navbar": "navbar-teal navbar-dark",
     "no_navbar_border": False,
     "navbar_fixed": True,
     "layout_boxed": False,
     "footer_fixed": False,
-    "sidebar_fixed": True,
-    "sidebar": "sidebar-dark-primary",
+    # "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-teal",
     "sidebar_nav_small_text": True,
     "sidebar_disable_expand": False,
     "sidebar_nav_child_indent": False,
@@ -104,7 +104,6 @@ JAZZMIN_UI_TWEAKS = {
     },
     "actions_sticky_top": True
 }
-
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

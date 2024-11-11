@@ -1,0 +1,487 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify jazzmin %}
+{% get_jazzmin_settings request as jazzmin_settings %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        .invoice-section {
+            overflow: auto;
+            margin-bottom: 2rem;
+        }
+        .facture[size="A4"] {
+            width: 21cm;
+            height: 29.7cm;
+            padding: 1cm;
+            margin: auto;
+            background: #FFF;
+            /* scale: 0.7; */
+        }
+        table {
+            width: 100%;
+            padding: 1rem;
+            margin: 3rem 0;
+            border: 0px solid;
+            border-collapse: collapse;
+        }
+        .order-details, .order-details {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .order-details th, .order-details td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        .order-details th, .order-details th {
+            background-color: #f2f2f2;
+        }
+        .edit-section{
+            position: fixed;
+            bottom: 0;
+            height: 50%;
+            background: #eef1ed;
+            box-shadow: 0px 15px 29px 9px #3337;
+            overflow: auto;
+        }        
+        .facture select {
+            width: 100%;
+            padding: 4px;
+            border: none; /* Removes border from the select */
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background: transparent;
+            font-size: 1rem;
+        }
+        .facture input[type="number"] {
+            width: 60px;
+            padding: 4px;
+            text-align: center;
+            border: none; 
+            background: transparent; 
+        }
+        /* Ensure the delete button is hidden by default */
+.delete-btn {
+    position: absolute;
+    display: none; /* Hide by default */
+    background-color: #f44336; /* Red color */
+    color: white; /* Text color */
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    margin-top: -19px;
+    cursor: pointer;
+    transition: background-color 0.3s ease, opacity 0.3s ease;
+}
+
+/* Show the delete button when hovering over the row */
+.order-details tr:hover .delete-btn {
+    display: inline-block; /* Show the button when hovering */
+}
+
+/* Add hover effect on the button */
+.delete-btn:hover {
+    background-color: #d32f2f; /* Darker red on hover */
+    opacity: 0.8;
+}
+
+/* Optionally, make the button's icon larger */
+.delete-btn i {
+    font-size: 16px; /* Adjust size of the icon */
+}
+
+/* Add a smooth transition to the row */
+.order-details tr {
+    transition: background-color 0.3s ease;
+}
+
+/* Change the background color of the row on hover */
+.order-details tr:hover {
+    background-color: #f1f1f1; /* Light gray on hover */
+}
+
+    </style>
+    {% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script type="text/javascript" src="{% url 'admin:jsi18n' %}"></script>
+    {{ media }}
+
+    <script type="text/javascript">
+document.addEventListener('DOMContentLoaded', function() {
+    
+    const id_customer = document.getElementById('id_customer');
+    const issue_date = document.getElementById('id_issue_date');
+
+    const invoice_customer = document.getElementById('invoice_customer');
+    const invoice_issue_date = document.getElementById('invoice_issue_date');
+    const inputTotalAmount = document.querySelector('input[name="total_amount"]');
+    const invoiceTotalAmount = document.getElementById('invoice_total_amount');
+
+    // Update invoice details based on changes
+    if (id_customer) {
+        id_customer.addEventListener('change', function() {
+            invoice_customer.textContent = id_customer.options[id_customer.selectedIndex].text;
+        });
+    }
+
+    if (issue_date) {
+        issue_date.addEventListener('change', function() {
+            invoice_issue_date.textContent = issue_date.value;
+        });
+    }
+    // Apply event listeners to existing rows
+    function applyEventListenersToRow(row) {
+        const productSelect = row.querySelector('.product_code');
+        const productId = row.querySelector('input[name="product_codes"]');
+        const quantityInput = row.querySelector('.filed_quantity');
+        const priceCell = row.querySelector('.filed_price');
+        const totalCell = row.querySelector('.filed_total');
+
+        // Update price and total when a product is selected
+        productSelect.addEventListener('change', function() {
+            const selectedOption = productSelect.options[productSelect.selectedIndex].value;
+            const [productCode, productPrice] = selectedOption.split('|');
+            productId.value = productCode
+            priceCell.textContent = `$${parseFloat(productPrice).toFixed(2)}`;
+            updateTotal(quantityInput, productPrice, totalCell, invoiceTotalAmount);
+        });
+
+        // Update total when the quantity is changed
+        quantityInput.addEventListener('input', function() {
+            const selectedOption = productSelect.options[productSelect.selectedIndex].value;
+            const [, productPrice] = selectedOption.split('|');
+            updateTotal(quantityInput, productPrice, totalCell, invoiceTotalAmount);
+        });
+
+        // Delete button functionality
+        row.querySelector('.delete-btn').addEventListener('click', function() {
+            deleteProduct(row, invoiceTotalAmount);
+        });
+    }
+
+    // Function to update the total price and invoice total amount
+    function updateTotal(quantityInput, productPrice, totalCell, invoiceTotalAmount) {
+        const quantity = parseFloat(quantityInput.value) || 1;
+        const price = parseFloat(productPrice) || 0;
+        const total = quantity * price;
+
+        totalCell.textContent = `${total.toFixed(2)}`;
+        recalculateInvoiceTotal(invoiceTotalAmount);
+    }
+
+    // Function to add a new product row
+    function addProduct() {
+        const tableBody = document.querySelector('#products-table tbody');
+        const newRow = document.createElement('tr');
+        let count = tableBody.rows.length + 1; // Dynamic row count
+
+            // <td>${count}</td>
+        newRow.innerHTML = `
+            <input type="hidden" name="order_ids" value="{{ item.order.id }}">
+            <td><select name="product_code" class="product_code" style=" width: 100%; padding: 4px; text-align: left; border: none; appearance: none; -webkit-appearance: none; -moz-appearance: none; background: transparent;">
+            {% for product in products %}
+                <option value="{{ product.product_code }}|{{ product.price }}">{{ product.name }}</option>
+            {% endfor %}
+            </select></td>
+            <input type="hidden" name="product_codes" value="">
+            <td><input name="quantities" type="number" class="form-control filed_quantity" value="1" min="1" style=" width: 80px; padding: 4px; text-align: center; border: none; background: transparent;"></td>
+            <td class="filed_price"></td>
+            <td class="filed_total"></td>
+            <td style="width: 0; padding: 0; border: none;"><button type="button" class="delete-btn"><i class="fa fa-trash"></i></button></td>
+        `;
+
+        tableBody.appendChild(newRow);
+
+        // Event listeners for the new product row
+        const productSelect = newRow.querySelector('.product_code');
+        const productId = newRow.querySelector('input[name="product_codes"]');
+        const quantityInput = newRow.querySelector('.filed_quantity');
+        const priceCell = newRow.querySelector('.filed_price');
+        const totalCell = newRow.querySelector('.filed_total');
+
+        // Update price and total when a product is selected
+        productSelect.addEventListener('change', function() {
+            const selectedOption = productSelect.options[productSelect.selectedIndex].value;
+            const [productCode, productPrice] = selectedOption.split('|');
+            productId.value = productCode
+            priceCell.textContent = `$${parseFloat(productPrice).toFixed(2)}`;
+            updateTotal(quantityInput, productPrice, totalCell, invoiceTotalAmount);
+        });
+
+        // Update total when the quantity is changed
+        quantityInput.addEventListener('input', function() {
+            const selectedOption = productSelect.options[productSelect.selectedIndex].value;
+            const [, productPrice] = selectedOption.split('|');
+            updateTotal(quantityInput, productPrice, totalCell, invoiceTotalAmount);
+        });
+
+        // Delete button functionality
+        newRow.querySelector('.delete-btn').addEventListener('click', function() {
+            deleteProduct(newRow, invoiceTotalAmount);
+        });
+    }
+
+    // Function to recalculate the total amount for the entire invoice
+    function recalculateInvoiceTotal(invoiceTotalAmount) {
+        let totalSum = 0;
+        document.querySelectorAll('.filed_total').forEach(function(cell) {
+            const cellValue = parseFloat(cell.textContent.replace('$', '')) || 0;
+            totalSum += cellValue;
+        });
+        inputTotalAmount.value = `${totalSum.toFixed(2)}`;
+        invoiceTotalAmount.textContent = `AED ${totalSum.toFixed(2)}`;
+    }
+
+    // Function to delete a product row
+    function deleteProduct(row, invoiceTotalAmount) {
+        if (confirm('Are you sure you want to delete this product?')) {
+            row.remove();
+            recalculateInvoiceTotal(invoiceTotalAmount);
+        }
+    }
+
+    // Apply event listeners to all existing rows on page load
+    const existingRows = document.querySelectorAll('#products-table tbody tr');
+    existingRows.forEach(row => {
+        applyEventListenersToRow(row);
+    });
+
+    // Attach the addProduct function to the "Add Product" button
+    document.getElementById('add-product-btn').addEventListener('click', addProduct);
+
+});
+    </script>
+{% endblock %}
+
+{% if not is_popup %}
+    {% block breadcrumbs %}
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'admin:index' %}">{% trans 'Home' %}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a></li>
+            <li class="breadcrumb-item">
+                {% if has_view_permission %}
+                    <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+                {% else %}
+                    {{ opts.verbose_name_plural|capfirst }}
+                {% endif %}
+            </li>
+            <li class="breadcrumb-item active">
+                {% if add %}
+                    {% blocktrans with name=opts.verbose_name %}Add {{ name }}{% endblocktrans %}
+                {% else %}
+                    {{ original|truncatewords:"18" }}
+                {% endif %}
+            </li>
+        </ol>
+    {% endblock %}
+{% endif %}
+
+{% block content_title %} {{ opts.verbose_name_plural|capfirst }} {% endblock %}
+
+
+
+{% block content %}
+<form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+<div class="invoice-section col-12">
+    <div class="facture " size="A4" id="my-invoice">
+        <div class="header">
+            <div>
+            <p style="display: inline-block; float: inline-start;"><strong>Bill To: </strong><span id="invoice_customer">{{ invoice.customer.name }}</span></p>
+            <p style="display: inline-block; float: inline-end;"><strong>Invoice Date: </strong> <span id="invoice_issue_date">{{ invoice.issue_date }}</span></p>
+            </div>
+            <br><br>
+            <h2 style="display: block; width: 100%; text-align: center;">Tax Invoice #{{ invoice.invoice_number }} </h2>
+            <input type="hidden" name="invoice_number" value="{{ invoice.invoice_number }}">
+        </div>
+        <table class="order-details" id="products-table">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Quantity</th>
+                    <th>Unit Price</th>
+                    <th>Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in orders_with_totals %}
+                    <tr data-order-id="{{ item.order.id }}">
+                        <!-- <td>forloop.counter </td> -->
+                        <input type="hidden" name="order_ids" value="{{ item.order.id }}">
+                        <td><select name="product_code" class="product_code" style=" width: 100%; padding: 4px; text-align: left; border: none; appearance: none; -webkit-appearance: none; -moz-appearance: none; background: transparent;">
+                        {% for product in products %}
+                            <option value="{{ product.product_code }}|{{ product.price }}" {% if product.product_code == item.order.product_code.product_code %}selected{% endif %}>{{ product.name }}</option>
+                        {% endfor %}
+                        </select></td>
+                        <input type="hidden" name="product_codes" value="{{ item.order.product_code.product_code }}">
+                        <td><input name="quantities" type="number" class="form-control filed_quantity" value="{{ item.order.quantity }}" min="1" style=" width: 80px; padding: 4px; text-align: center; border: none; background: transparent;"></td>
+                        <td class="filed_price">{{ item.order.product_code.price }}</td>
+                        <td class="filed_total">{{ item.order_total }}</td>
+                        <td style="width: 0; padding: 0; border: none;"><button type="button" class="delete-btn"><i class="fa fa-trash"></i></button></td>
+                    </tr>
+                {% endfor %}                
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th colspan=3><strong>Total Amount:</strong></th>
+                    <td name="total_amount" id="invoice_total_amount"> {% if invoice.total_amount %}AED {{ invoice.total_amount }}{% else %}AED 0{% endif %}</td>
+                    <input type="hidden" name="total_amount" id="total_amount_input" value="{% if invoice.total_amount %}{{ invoice.total_amount|floatformat:2 }}{% else %}0{% endif %}">
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<div class="card col-12" style="position: sticky; bottom: 2rem; width: 100%;">
+    <div class="card-body">
+        <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 text-left" for="id_customer">
+                Customer <span class="text-red">* </span>
+            </label>
+            <div class="col-sm-3">
+                <select name="id_customer" required="" id="id_customer" class="form-control" style="width: 230px;">
+                {% for c in customers %}
+                    <option value="{{ c.customer_code }}" {% if c.customer_code == invoice.customer.customer_code %}selected{% endif %}>{{ c.customer_code }}|{{ c.name }}</option>
+                {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="row mb-2 align-items-center">
+            <label class="col-sm-3 text-left" for="id_issue_date">
+                Issue date <span class="text-red">* </span>
+            </label>
+            <div class="col-sm-3">
+                <input type="date" name="issue_date" value="{{ invoice.issue_date|date:"Y-m-d" }}" class="vDateField form-control" style="width: 230px;" required=""  id="id_issue_date">
+            </div>
+        </div>
+
+        <div class="btns-div row col-12">
+            <a href="#" id="add-product-btn" class="btn btn-info btn-default col-4 mx-5">Add another Order</a>
+            <!-- <div class="btns-div row col-8 align-items-center"> -->
+
+                {% if invoice %}
+                <form method="post" action="">
+                {% csrf_token %}
+                <a href="{% url 'admin:crm_invoice_delete' invoice.invoice_number %}" class="btn btn-danger"
+                   onclick="return confirm('Are you sure you want to delete this invoice?');">
+                    Delete Invoice
+                </a>
+                </form>
+                {% endif %}
+                <a href="javascript:void(0);" class="btn btn-secondary mx-2" onclick="printInvoice('my-invoice')">
+                    Print Invoice
+                </a>
+               <button type="submit" class="btn btn-success">Save Invoice</button>
+            <!-- <div class="btns-div row"> -->
+        </div>
+    </div>
+</div>
+</form>
+
+<script>
+    function printInvoice(invoiceId) {
+        var invoiceContent = document.getElementById(invoiceId).innerHTML;
+        var originalContent = document.body.innerHTML;
+
+        // Create a printable window with custom styles
+        var printWindow = window.open('', '_blank', 'width=800,height=600');
+        printWindow.document.open();
+        printWindow.document.write(`
+<html>
+<head>
+    <title>Print Invoice</title>
+    <style>
+        .invoice-section {
+            overflow: auto;
+            margin-bottom: 2rem;
+        }
+        .facture[size="A4"] {
+            width: 21cm;
+            height: 29.7cm;
+            padding: 1cm;
+            margin: auto;
+            background: #FFF;
+            /* scale: 0.7; */
+        }
+        table {
+            width: 100%;
+            padding: 1rem;
+            margin: 3rem 0;
+            border: 0px solid;
+            border-collapse: collapse;
+        }
+        .order-details, .order-details {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .order-details th, .order-details td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        .order-details th, .order-details th {
+            background-color: #f2f2f2;
+        }
+        .edit-section{
+            position: fixed;
+            bottom: 0;
+            height: 50%;
+            background: #eef1ed;
+            box-shadow: 0px 15px 29px 9px #3337;
+            overflow: auto;
+        }        
+        .facture select {
+            width: 100%;
+            padding: 4px;
+            border: none; /* Removes border from the select */
+            appearance: none; /* Removes the default dropdown arrow */
+            -webkit-appearance: none; /* Ensures compatibility with WebKit browsers */
+            -moz-appearance: none; /* Ensures compatibility with Firefox */
+            background: transparent; /* Removes background */
+            font-size: 1rem;
+        }
+        .facture input[type="number"] {
+            width: 60px;
+            padding: 4px;
+            text-align: center;
+            border: none; /* No border */
+            background: transparent; /* Transparent background */
+        }
+        .delete-btn {
+            position: absolute;
+            display: none; /* Hide by default */
+            background-color: #f44336; /* Red color */
+            color: white; /* Text color */
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            margin-top: -19px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, opacity 0.3s ease;
+        }              
+    </style>
+</head>
+<body>
+    ${invoiceContent}
+</body>
+</html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+    }
+</script>
+
+<script>
+    function printInvoice1(invoiceId) {
+        var invoiceContent = document.getElementById(invoiceId).innerHTML;
+        var originalContent = document.body.innerHTML;
+
+        document.body.innerHTML = invoiceContent;
+        window.print();
+        document.body.innerHTML = originalContent;
+        window.location.reload(); // Optional if needed to restore JS bindings
+    }
+</script>
+{% endblock %}
+
